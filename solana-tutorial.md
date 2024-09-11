@@ -1,16 +1,16 @@
-# Solana Coding Tutorial for Solana Playground (Revised)
+# Solana Coding Tutorial for Solana Playground (web3.js v2)
 
-This tutorial provides examples that will work directly in the Solana Playground (https://beta.solpg.io/) without modifications. We'll use the injected connection and wallet provided by the playground environment.
+This tutorial provides examples that will work directly in the Solana Playground (https://beta.solpg.io/) using web3.js version 2. We'll use the injected connection and wallet provided by the playground environment.
 
 ## 1. Check Balance and Airdrop
 
 ```typescript
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
 async function main() {
   // Use the injected connection
   const connection = pg.connection;
-  const publicKey = pg.wallet.publicKey;
+  const publicKey = new PublicKey(pg.wallet.publicKey);
 
   console.log("Wallet public key:", publicKey.toBase58());
 
@@ -19,12 +19,17 @@ async function main() {
 
   if (balance < LAMPORTS_PER_SOL) {
     console.log("Requesting airdrop...");
-    const airdropSignature = await connection.requestAirdrop(
+    const signature = await connection.requestAirdrop(
       publicKey,
       LAMPORTS_PER_SOL
     );
 
-    await connection.confirmTransaction(airdropSignature);
+    // Wait for confirmation
+    const latestBlockhash = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      signature,
+      ...latestBlockhash
+    });
 
     balance = await connection.getBalance(publicKey);
     console.log(`New balance after airdrop: ${balance / LAMPORTS_PER_SOL} SOL`);
@@ -39,6 +44,7 @@ This script checks the balance of the Playground wallet and requests an airdrop 
 ## 2. Create Token
 
 ```typescript
+import { PublicKey } from "@solana/web3.js";
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 
 async function createToken() {
@@ -65,7 +71,7 @@ async function createToken() {
 
   console.log(`Token account created: ${tokenAccount.address.toBase58()}`);
 
-  const mintAmount = 1000000000; // 1 token with 9 decimals
+  const mintAmount = 1000000000n; // 1 token with 9 decimals
   await mintTo(
     connection,
     payer,
@@ -75,20 +81,20 @@ async function createToken() {
     mintAmount
   );
 
-  console.log(`Minted ${mintAmount / 1e9} tokens to ${tokenAccount.address.toBase58()}`);
+  console.log(`Minted ${Number(mintAmount) / 1e9} tokens to ${tokenAccount.address.toBase58()}`);
 }
 
 createToken().catch(console.error);
 ```
 
-This script creates a new token, an associated token account, and mints some tokens to it.
+This script creates a new token, an associated token account, and mints some tokens to it. Note that we're using BigInt (`1000000000n`) for the mint amount, as required by spl-token in conjunction with web3.js v2.
 
 ## 3. Interact with a Program (Example)
 
-Here's a simplified example of how you might interact with a program on Solana:
+Here's a simplified example of how you might interact with a program on Solana using web3.js v2:
 
 ```typescript
-import { PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 
 async function interactWithProgram() {
   const connection = pg.connection;
@@ -97,22 +103,34 @@ async function interactWithProgram() {
   // This is a hypothetical program ID
   const PROGRAM_ID = new PublicKey("Your_Program_ID_Here");
 
-  const instruction = new TransactionInstruction({
+  const instruction = {
+    programId: PROGRAM_ID,
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       // Add other necessary account keys here
     ],
-    programId: PROGRAM_ID,
     data: Buffer.from([]) // Add your instruction data here
-  });
+  };
 
-  const transaction = new Transaction().add(instruction);
+  const latestBlockhash = await connection.getLatestBlockhash();
+
+  const messageV0 = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions: [instruction]
+  }).compileToV0Message();
+
+  const transaction = new VersionedTransaction(messageV0);
+  transaction.sign([payer]);
 
   console.log("Sending transaction...");
-  const signature = await connection.sendTransaction(transaction, [payer]);
+  const signature = await connection.sendTransaction(transaction);
 
   console.log("Confirming transaction...");
-  await connection.confirmTransaction(signature);
+  await connection.confirmTransaction({
+    signature,
+    ...latestBlockhash
+  });
 
   console.log("Transaction confirmed:", signature);
 }
@@ -120,7 +138,7 @@ async function interactWithProgram() {
 interactWithProgram().catch(console.error);
 ```
 
-This example shows how to create a transaction to interact with a Solana program. You would need to replace `"Your_Program_ID_Here"` with the actual program ID you're interacting with and add the appropriate instruction data.
+This example shows how to create a transaction to interact with a Solana program using the new `VersionedTransaction` and `TransactionMessage` from web3.js v2. You would need to replace `"Your_Program_ID_Here"` with the actual program ID you're interacting with and add the appropriate instruction data.
 
 ## Notes
 
@@ -128,8 +146,14 @@ This example shows how to create a transaction to interact with a Solana program
 
 2. The Playground environment provides `pg.wallet` object that you can use to access the wallet. `pg.wallet.publicKey` gives you the public key, and `pg.wallet.keypair` gives you the keypair for signing transactions.
 
-3. These examples use the `@solana/web3.js` and `@solana/spl-token` libraries, which are available in the Solana Playground environment.
+3. These examples use the `@solana/web3.js` (v2) and `@solana/spl-token` libraries, which are available in the Solana Playground environment.
 
-4. Remember to handle errors appropriately in a production environment.
+4. Web3.js v2 introduces `VersionedTransaction` and `TransactionMessage` for creating transactions, which we use in the program interaction example.
 
-5. When interacting with real programs or handling real tokens, always double-check your code and test thoroughly on devnet before moving to mainnet.
+5. Transaction confirmation now requires passing both the signature and the blockhash information.
+
+6. When working with token amounts, we now use BigInt (e.g., `1000000000n`) to avoid precision issues with large numbers.
+
+7. Remember to handle errors appropriately in a production environment.
+
+8. Always test thoroughly on devnet before moving to mainnet when interacting with real programs or handling real tokens.
