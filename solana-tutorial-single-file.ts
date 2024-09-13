@@ -1,11 +1,10 @@
-# Comprehensive Solana Tutorial for Playground (web3.js v2)
-
-This tutorial provides a step-by-step guide to create and interact with tokens on Solana, including checking balance, creating a token with metadata, and interacting with a program. All examples are designed to work directly in the Solana Playground (https://beta.solpg.io/) using web3.js version 2.
-
-## 1. Check Balance and Airdrop
-
-```typescript
-import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL, PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
+import { Metaplex } from "@metaplex-foundation/js";
+import { 
+  createCreateMetadataAccountV3Instruction,
+  PROGRAM_ID as METADATA_PROGRAM_ID,
+} from "@metaplex-foundation/mpl-token-metadata";
 
 async function checkBalanceAndAirdrop() {
   const connection = pg.connection;
@@ -35,20 +34,6 @@ async function checkBalanceAndAirdrop() {
 
   return balance;
 }
-```
-
-This function checks the wallet balance and requests an airdrop if the balance is less than 1 SOL.
-
-## 2. Create Token with Metadata
-
-```typescript
-import { PublicKey } from "@solana/web3.js";
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
-import { Metaplex } from "@metaplex-foundation/js";
-import { 
-  createCreateMetadataAccountV3Instruction,
-  PROGRAM_ID as METADATA_PROGRAM_ID,
-} from "@metaplex-foundation/mpl-token-metadata";
 
 async function createTokenWithMetadata(
   tokenName: string,
@@ -64,7 +49,7 @@ async function createTokenWithMetadata(
     payer,
     payer.publicKey,
     payer.publicKey,
-    9 // 9 decimals
+    9
   );
 
   console.log(`Token created: ${mint.toBase58()}`);
@@ -78,7 +63,7 @@ async function createTokenWithMetadata(
 
   console.log(`Token account created: ${tokenAccount.address.toBase58()}`);
 
-  const mintAmount = 1000000000n; // 1 token with 9 decimals
+  const mintAmount = 1000000000n;
   await mintTo(
     connection,
     payer,
@@ -90,7 +75,6 @@ async function createTokenWithMetadata(
 
   console.log(`Minted ${Number(mintAmount) / 1e9} tokens to ${tokenAccount.address.toBase58()}`);
 
-  // Add metadata
   console.log("Adding metadata...");
   const metaplex = Metaplex.make(connection);
 
@@ -135,14 +119,6 @@ async function createTokenWithMetadata(
 
   return { mint, tokenAccount, metadataPDA };
 }
-```
-
-This function creates a new token, mints some tokens to an associated token account, and then adds metadata to the token using the Metaplex SDK.
-
-## 3. Interact with a Program (Example)
-
-```typescript
-import { PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 
 async function interactWithProgram(programId: string, instruction: Buffer) {
   const connection = pg.connection;
@@ -154,7 +130,6 @@ async function interactWithProgram(programId: string, instruction: Buffer) {
     programId: PROGRAM_ID,
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-      // Add other necessary account keys here
     ],
     data: instruction
   };
@@ -182,22 +157,12 @@ async function interactWithProgram(programId: string, instruction: Buffer) {
   console.log("Transaction confirmed:", signature);
   return signature;
 }
-```
 
-This function demonstrates how to interact with a Solana program using web3.js v2.
-
-## Main Function
-
-Now, let's put it all together in a main function:
-
-```typescript
 async function main() {
   try {
-    // Step 1: Check balance and airdrop if necessary
     const balance = await checkBalanceAndAirdrop();
     console.log(`Current balance: ${balance / LAMPORTS_PER_SOL} SOL`);
 
-    // Step 2: Create a token with metadata
     const { mint, tokenAccount, metadataPDA } = await createTokenWithMetadata(
       "My Token",
       "MTKN",
@@ -208,7 +173,6 @@ async function main() {
     console.log(`Token account: ${tokenAccount.address.toBase58()}`);
     console.log(`Metadata address: ${metadataPDA.toBase58()}`);
 
-    // Step 3: Interact with a program (example)
     const programId = "Your_Program_ID_Here";
     const instruction = Buffer.from([/* Your instruction data */]);
     const signature = await interactWithProgram(programId, instruction);
@@ -220,23 +184,3 @@ async function main() {
 }
 
 main();
-```
-
-This main function ties all the pieces together, demonstrating the full flow from checking balance to creating a token with metadata to interacting with a program.
-
-## Notes
-
-1. Replace `"Your_Program_ID_Here"` with an actual program ID when interacting with a specific program.
-2. The metadata URI (`https://example.com/my-token-metadata.json`) should point to a JSON file that follows the Metaplex token standard. Here's an example:
-
-   ```json
-   {
-     "name": "My Token",
-     "symbol": "MTKN",
-     "description": "This is my custom token on Solana",
-     "image": "https://example.com/my-token-image.png"
-   }
-   ```
-
-3. Always handle errors appropriately and test thoroughly on devnet before moving to mainnet.
-4. The Solana Playground provides `pg.connection` for the connection and `pg.wallet` for wallet operations.
